@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>专题地图 | 美国城市人口变化 | 比例尺 | 无登录界面</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Roboto', '微软雅黑', sans-serif;
+        }
+        /* 页眉区域 */
+        .app-header {
+            height: 60px;
+            background: linear-gradient(135deg, #1e2a3a, #0f1a24);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 20;
+        }
+        .logo-area h1 { font-size: 1.3rem; font-weight: 500; }
+        .badge {
+            background: #2c7da0;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            margin-left: 12px;
+        }
+        .header-info { font-size: 0.8rem; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 30px; }
+
+        /* 主体：地图区域 + 右侧控制栏 */
+        .main-dashboard { display: flex; flex: 1; overflow: hidden; }
+        .map-container { flex: 1; position: relative; }
+        #viewDiv { width: 100%; height: 100%; }
+
+        /* 右侧面板（底图库区域 + 图层列表 + 图例） */
+        .sidebar-controls {
+            width: 320px;
+            background: #ffffffea;
+            backdrop-filter: blur(2px);
+            border-left: 1px solid #d4dfe9;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.05);
+        }
+        .control-card {
+            background: white;
+            margin: 16px 12px 0 12px;
+            border-radius: 20px;
+            border: 1px solid #eef2f6;
+            overflow: hidden;
+        }
+        .control-card:last-child { margin-bottom: 20px; }
+        .card-title {
+            background: #f8fafd;
+            padding: 10px 16px;
+            font-weight: 600;
+            border-bottom: 1px solid #e4edf2;
+        }
+        .card-content { padding: 10px 12px; max-height: 320px; overflow-y: auto; }
+        .info-tip {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        @media (max-width: 780px) { .sidebar-controls { width: 280px; } }
+    </style>
+</head>
+<body>
+
+<header class="app-header">
+    <div class="logo-area">
+        <h1>🗺️ 美国城市人口数量变化</h1>
+        <span class="badge">专题地图 · 无登录</span>
+    </div>
+    <div class="header-info">📍 底图切换自动聚焦数据范围 | 滚轮缩放 | 比例尺左下角</div>
+</header>
+
+<div class="main-dashboard">
+    <div class="map-container">
+        <div id="viewDiv"></div>
+        <div class="info-tip">🖱️ 滚轮缩放 | 比例尺已添加 (左下角)</div>
+    </div>
+
+    <div class="sidebar-controls">
+        <!-- 底图库区域 -->
+        <div class="control-card">
+            <div class="card-title">🗺️ 底图库区域</div>
+            <div class="card-content" id="basemapGalleryContainer"></div>
+        </div>
+        <!-- 图层列表 -->
+        <div class="control-card">
+            <div class="card-title">📂 图层列表</div>
+            <div class="card-content" id="layerListContainer"></div>
+        </div>
+        <!-- 图例 -->
+        <div class="control-card">
+            <div class="card-title">🧾 图例说明</div>
+            <div class="card-content" id="legendContainer"></div>
+        </div>
+        <div style="padding: 12px; text-align: center; font-size: 11px; color: #6c86a3;">比例尺 | 搜索框位于地图界面左上角</div>
+    </div>
+</div>
+
+<script src="https://js.arcgis.com/4.28/"></script>
+<script>
+    window.addEventListener("load", function() {
+        require([
+            "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer",
+            "esri/widgets/BasemapGallery", "esri/widgets/LayerList", "esri/widgets/Legend",
+            "esri/widgets/Search", "esri/widgets/ScaleBar", "esri/geometry/Extent"
+        ], function(Map, MapView, FeatureLayer, BasemapGallery, LayerList, Legend, Search, ScaleBar, Extent) {
+
+            // 创建地图（默认底图）
+            const map = new Map({ basemap: "arcgis-streets", ground: "world-elevation" });
+
+            // 专题图层（美国城市人口数量变化）
+            const featureLayer = new FeatureLayer({
+                url: "https://www.geosceneonline.cn/server/rest/services/Hosted/美国城市人口数量变化1/FeatureServer/0",
+                title: "美国城市人口数量变化",
+                outFields: ["*"],
+                visible: true,
+                popupEnabled: true
+            });
+            map.add(featureLayer);
+
+            // 地图视图
+            const view = new MapView({
+                container: "viewDiv",
+                map: map,
+                center: [-100, 40],
+                zoom: 4,
+                navigation: { mouseWheelZoomEnabled: true }  // 滚轮缩放开启
+            });
+
+            // ---------- 比例尺功能（已添加，位于左下角）----------
+            const scaleBar = new ScaleBar({ view: view, unit: "metric", style: "ruler" });
+            view.ui.add(scaleBar, "bottom-left");
+
+            // 搜索框
+            const searchWidget = new Search({ view: view, includeDefaultSources: true, placeholder: "搜索地点" });
+            view.ui.add(searchWidget, "top-left");
+
+            // 底图库（右侧面板）
+            const basemapGallery = new BasemapGallery({
+                view: view,
+                container: "basemapGalleryContainer",
+                source: { portal: { url: "https://www.arcgis.com" } }
+            });
+
+            // 图层列表
+            const layerList = new LayerList({ view: view, container: "layerListContainer", visibilityAppearance: "checkbox" });
+
+            // 图例
+            const legend = new Legend({ view: view, container: "legendContainer" });
+
+            // 获取数据范围，并在底图切换时自动定位到该范围
+            let dataExtent = null;
+            featureLayer.when(function() {
+                const fullExtent = featureLayer.fullExtent;
+                if (fullExtent) {
+                    dataExtent = fullExtent.clone();
+                    // 增加边距
+                    const expExt = new Extent({
+                        xmin: dataExtent.xmin - (dataExtent.xmax - dataExtent.xmin) * 0.1,
+                        ymin: dataExtent.ymin - (dataExtent.ymax - dataExtent.ymin) * 0.1,
+                        xmax: dataExtent.xmax + (dataExtent.xmax - dataExtent.xmin) * 0.1,
+                        ymax: dataExtent.ymax + (dataExtent.ymax - dataExtent.ymin) * 0.1,
+                        spatialReference: dataExtent.spatialReference
+                    });
+                    view.goTo(expExt);
+                }
+            });
+
+            // 底图切换时，自动跳转到数据范围
+            basemapGallery.watch("activeBasemap", function() {
+                if (dataExtent) {
+                    const expExt = new Extent({
+                        xmin: dataExtent.xmin - (dataExtent.xmax - dataExtent.xmin) * 0.1,
+                        ymin: dataExtent.ymin - (dataExtent.ymax - dataExtent.ymin) * 0.1,
+                        xmax: dataExtent.xmax + (dataExtent.xmax - dataExtent.xmin) * 0.1,
+                        ymax: dataExtent.ymax + (dataExtent.ymax - dataExtent.ymin) * 0.1,
+                        spatialReference: dataExtent.spatialReference
+                    });
+                    view.goTo(expExt, { duration: 800 });
+                }
+            });
+
+            console.log("地图已启动，无任何登录界面，比例尺已添加至左下角");
+        });
+    });
+</script>
+</body>
+</html>
